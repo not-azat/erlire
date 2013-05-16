@@ -60,7 +60,7 @@ print_letter_dict(Letter, LetterDict) ->
 -spec compose(transition(), transition()) -> transition().
 
 compose({String1, Dict1}, {String2, Dict2}) ->	
-	{String1 ++ String2, compose_letter_dicts(Dict1, Dict2)}.
+	{<<String1/binary, String2/binary>>, compose_letter_dicts(Dict1, Dict2)}.
 
 
 compose_letter_dicts(LetterDict1, LetterDict2) ->
@@ -96,10 +96,10 @@ get_states_for(LeftStatesSet, LetterDict2) ->
 
 -spec new(letter(), Automata::re_automata()) -> transition().
 
-new([Letter], TransitionDict) ->
+new(Letter, TransitionDict) ->
 	case dict:find(Letter, TransitionDict) of
 		{ok, LetterDict} ->
-			{[Letter], LetterDict};
+			{Letter, LetterDict};
 		error -> badarg
 	end.
 
@@ -131,15 +131,15 @@ has_initial_and_final_state({_, TransitionDict}, Automata = {re_automata, Initia
 
 
 test() ->
-	ReStr = "ab|cd",
-	Str1 = "a",
-	Str2 = "b",
-	Str3 = "c",
-	Str4 = "d",
-	Str12 = Str1 ++ Str2,
-	Str123 = Str12 ++ Str3,
-	Str1234 = Str123 ++ Str4,
-	Str34 = Str3 ++ Str4,
+	ReStr = <<"ab|cd">>,
+	Str1 = <<"a">>,
+	Str2 = <<"b">>,
+	Str3 = <<"c">>,
+	Str4 = <<"d">>,
+	Str12 = <<Str1/binary, Str2/binary>>,
+	Str123 = <<Str12/binary, Str3/binary>>,
+	Str1234 = <<Str123/binary, Str4/binary>>,
+	Str34 = <<Str3/binary, Str4/binary>>,
 	Auto = re_compiler:compile(ReStr),
 	TrDict = compute_transition_dict(Auto),
 	T1 = new(Str1, TrDict),

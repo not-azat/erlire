@@ -3,16 +3,16 @@
 -include("re_types.hrl").
 
 
--spec run(string(), re_automata()) -> boolean().
+-spec run(binary(), re_automata()) -> boolean().
 
-run(String, Automata) ->
-	matches(String, Automata, re_compiler:initial_states_set(Automata)).
+run(BinString, Automata) ->
+	matches(BinString, Automata, re_compiler:initial_states_set(Automata)).
 
 
-matches([], Automata, States) ->
+matches(<<>>, Automata, States) ->
 	is_matched(Automata, States);
 
-matches([Token | Rest], Automata, States) ->
+matches(<<Token:1/binary, Rest/binary>>, Automata, States) ->
 	case (is_matched(Automata, States)) of 
 		true -> true;
 		false ->

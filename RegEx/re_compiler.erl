@@ -1,17 +1,19 @@
 -module(re_compiler).
 -export([compile/1, initial_states_set/1, next_states_set/3, is_matched/2]).
+-export([print_final_automata/1]).
 -include("re_types.hrl").
 
 %%% public interface
 
 -spec compile(regex_post()) -> re_automata() | badarg.
 
-compile(RegExStr) ->
+compile(RegExStrBin) ->
+	RegExStr = binary_to_list(RegExStrBin),
 	PostfixRegExStr = re_infix_to_postfix:convert(RegExStr),
 	case (PostfixRegExStr) of 
 		badarg -> badarg;
 		_ ->
-			compact(process_token(PostfixRegExStr, [], dict:new()))
+			convert_to_binary(compact(process_token(PostfixRegExStr, [], dict:new())))
 	end.
 
 %%% interface for re_transition
@@ -255,6 +257,19 @@ compact(Automata, Index, State) ->
 		DestinationsDict).
 
 
+convert_to_binary({re_automata, InitialExpNum, AutomataDict}) ->
+	AutomataDict1 = dict:map(fun(_, {IsFinal, EdgesDict}) ->
+			NewEdgesDict = dict:fold(fun(Letter, SetOfStatesIndeces, NewDict) ->
+					dict:store(<<Letter>>, SetOfStatesIndeces, NewDict)
+				end,
+				dict:new(),
+				EdgesDict),
+			{IsFinal, NewEdgesDict}
+		end,
+		AutomataDict),
+	{re_automata, InitialExpNum, AutomataDict1}.
+
+
 -spec remove_redundant_states(dict()) -> dict(). % difference in value types
 
 remove_redundant_states(Automata) ->
@@ -338,18 +353,18 @@ exclude_final([Current | Rest], Result, IsFinalState) ->
 
 % %%% Debugging & visualizing
 
-% print_final_automata({re_automata, InitialExpNum, Dict}) ->
-% 	io:format("Initial state: ~p~n", [InitialExpNum]),
-% 	dict:map(fun
-% 		(Index, {IsFinal, EdgesDict}) ->
-% 			io:format("from state (final: ~p) ~p:~n", [IsFinal, Index]),
-% 			dict:map(fun(Letter, SetOfStatesIndexes) ->
-% 					io:format("~p ==> ~p~n", [Letter, gb_sets:to_list(SetOfStatesIndexes)])
-% 				end,
-% 				EdgesDict)
-% 		end,
-% 		Dict),
-% 	ok.
+print_final_automata({re_automata, InitialExpNum, Dict}) ->
+	io:format("Initial state: ~p~n", [InitialExpNum]),
+	dict:map(fun
+		(Index, {IsFinal, EdgesDict}) ->
+			io:format("from state (final: ~p) ~p:~n", [IsFinal, Index]),
+			dict:map(fun(Letter, SetOfStatesIndeces) ->
+					io:format("~p ==> ~p~n", [Letter, gb_sets:to_list(SetOfStatesIndeces)])
+				end,
+				EdgesDict)
+		end,
+		Dict),
+	ok.
 
 
 % compile_and_print(InfixRegEx) ->
