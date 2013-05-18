@@ -1,172 +1,269 @@
 -module(re_transition).
--compile([export_all]).
--include("re_types.hrl").
+-export([convert_automata/1, find_transition/2, compose_transitions/2, matches/2]).
+-export([test/0]).
 
 
+-type transition_automata() :: {transition_automata, InitialStates :: gb_set(), FinalStates :: gb_set(), dict()}.
+%% where dict(Letter => dict(Index => set(Index)))
 
-compute_transition_dict({re_automata, _, AutomataDict}) ->
+-type re_automata() :: {re_automata, InitialExpNum::integer(), dict()}.
+%% where dict(Index => {IsFinal::boolean(), dict(Letter => set(Index))})
+
+-type transition() :: dict().
+%% where dict(Index => set(Index))
+
+
+%% public
+-spec convert_automata(re_automata()) -> transition_automata().
+
+convert_automata({re_automata, InitialExpNum, AutomataDict}) ->
+	AutomataDictNoIsFinal = dict:map(
+		fun(_, {_, Value}) -> Value end,
+		AutomataDict),
+	TransAutoDict = swap_first_and_second_key(
+		AutomataDictNoIsFinal,
+		fun(_, Set1, Set2) ->
+			gb_sets:union(Set1, Set2)
+		end),
+	InitialStates = gb_sets:singleton(InitialExpNum),
+	FinalStates = dict:fold(
+		fun
+			(Index, {true, _}, AccSet) -> gb_sets:add(Index, AccSet);
+			(_, {false, _}, AccSet) -> AccSet
+		end,
+		gb_sets:new(),
+		AutomataDict),
+	{transition_automata, InitialStates, FinalStates, TransAutoDict}.
+
+
+-spec swap_first_and_second_key(
+		dict(), 
+		MergeValues::fun((term(), term(), term()) -> term())) -> dict().
+%% dict(First => dict(Second => Value))  
+%% to
+%% dict(Second => didict:dict()ct(First => Value))
+swap_first_and_second_key(First2Second2Value, MergeValues) ->
 	dict:fold(
-		fun(StateIndex, {_, EdgesDict}, ResultAcc) ->
-			add_letters_to_transition_dict(StateIndex, EdgesDict, ResultAcc)
+		fun(First, Second2Value, Second2First2ValueAcc) ->
+			SwappedPairsList = make_all_swapped_pairs(First, Second2Value), % [{Second, dict(First => Value)}]
+			add_all_swapped_pairs(SwappedPairsList, Second2First2ValueAcc, MergeValues)
 		end,
 		dict:new(),
-		AutomataDict).
+		First2Second2Value).
 
 
-add_letters_to_transition_dict(LeftState, EdgesDict, TransitionDict) ->
+-spec make_all_swapped_pairs(
+		First::term(), 
+		Second2Value :: dict()) -> list({Second::term(), First2Value :: dict()}).
+
+make_all_swapped_pairs(First, Second2Value) ->
 	dict:fold(
-		fun(Letter, SetOfIndices, TransitionDictAcc) ->
-			LetterDict = case (dict:find(Letter, TransitionDictAcc)) of 
-				error -> dict:new();
-				{ok, FoundLetterDict} -> FoundLetterDict
-			end,
-			LetterDict1 = add_states_to_letter_dict(LeftState, SetOfIndices, LetterDict),
-			dict:store(Letter, LetterDict1, TransitionDictAcc)
-		end, 
-		TransitionDict,
-		EdgesDict).
+		fun(Second, Value, AccList) ->
+			First2Value = dict:store(First, Value, dict:new()),
+			[{Second, First2Value} | AccList]
+		end,
+		[],
+		Second2Value).
 
 
-add_states_to_letter_dict(LeftState, SetOfIndices, LetterDict) ->
-	case (dict:find(LeftState, LetterDict)) of 
-		error ->
-			dict:store(LeftState, SetOfIndices, LetterDict);
-		{ok, FoundSet} ->
-			dict:store(LeftState, gb_sets:union(FoundSet, SetOfIndices), LetterDict)
+-spec add_all_swapped_pairs(
+		list({Key :: term(), Value :: dict()}), 
+		Acc :: dict(), 
+		fun((term(), term(), term()) -> term())) -> dict().
+
+add_all_swapped_pairs(KVList, AccDict, MergeValues) ->
+	lists:foldl(
+		fun({Key, Value1}, InnerAccDict) ->
+			case dict:find(Key, InnerAccDict) of 
+				{ok, Value2} ->
+					dict:store(Key, dict:merge(MergeValues, Value1, Value2), InnerAccDict);
+				error ->
+					dict:store(Key, Value1, InnerAccDict)
+			end
+		end,
+		AccDict,
+		KVList).
+
+
+%% public
+-spec find_transition(binary(), transition_automata()) -> transition().
+
+find_transition(<<>>, _) ->
+	dict:new();
+find_transition(<<Letter:1/binary, Rest/binary>>, {transition_automata, _, _, TransAutoDict}) ->
+	case dict:find(Letter, TransAutoDict) of 
+		{ok, Value} -> 
+			find_transition_acc(Rest, TransAutoDict, Value);
+		error -> 
+			dict:new()
 	end.
 
 
+-spec find_transition_acc(
+		binary(), 
+		TransAutoDict :: dict(), 
+		Transition :: dict()) -> Transition :: dict().
+
+find_transition_acc(<<>>, _, AccDict) ->
+	AccDict;
+find_transition_acc(<<Letter:1/binary, Rest/binary>>, TransAutoDict, AccDict) ->
+	AccDict1 = case dict:find(Letter, TransAutoDict) of 
+		{ok, Value} -> compose_transitions(AccDict, Value);
+		error -> dict:new()
+	end,
+	find_transition_acc(Rest, TransAutoDict, AccDict1).
 
 
-print_transition_dict(TransitionDict) ->
-	dict:map(
-		fun(Letter, LetterDict) ->
-			print_letter_dict(Letter, LetterDict)
+%% public
+-spec compose_transitions(transition(), transition()) -> transition().
+
+compose_transitions(Transition1, Transition2) ->
+	dict:fold(
+		fun(Left, MiddleLeftSet, AccDict) ->
+			gb_sets:fold(
+				fun(MiddleLeft, InnerAccDict) ->
+					case dict:find(MiddleLeft, Transition2) of 
+						{ok, RightSet} -> dict:store(Left, RightSet, InnerAccDict);
+						error -> InnerAccDict
+					end
+				end,
+				AccDict,
+				MiddleLeftSet)
 		end,
-		TransitionDict).
+		dict:new(),
+		Transition1).
 
-print_letter_dict(Letter, LetterDict) ->
-	io:format("<<~p>>:~n", [Letter]),
-	dict:map(
-		fun(LeftState, RightStatesSet) ->
-			io:format("~p => ~p~n", [LeftState, gb_sets:to_list(RightStatesSet)])
+
+%% public
+-spec matches(transition(), transition_automata()) -> boolean().
+
+matches(Transition, {transition_automata, InitialStates, FinalStates, _}) ->
+	dict:fold(
+		fun(Index, IndexSet, IsFound) ->
+			HasInitial = gb_sets:is_element(Index, InitialStates),
+			HasFinal = (gb_sets:size(gb_sets:intersection(IndexSet, FinalStates)) > 0),
+			HasInitial and HasFinal or IsFound
 		end,
-		LetterDict),
+		false,
+		Transition).
+
+
+%%%   TESTS   %%%
+
+test() ->
+	swap_first_and_second_key_test(),
+	check_all_variants(<<"ab?cd">>, <<"abcd">>, [<<"abcd">>]),
+	check_all_variants(<<"a?b?c?d?">>, <<"abcde">>, [<<"a">>, <<"ab">>, <<"abc">>, <<"abcd">>]),
+	check_all_variants(<<"ab|(cd?)*">>, <<"abcdccd">>, [
+		<<"ab">>, 
+		<<"abc">>, 
+		<<"abcd">>, 
+		<<"abcdc">>, 
+		<<"abcdcc">>, 
+		<<"abcdccd">>]),
+	check_all_variants(<<"(ab|c)+">>, <<"abcab">>, [<<"ab">>, <<"abc">>, <<"abcab">>]).
+
+
+%% For example: for input string <<"abcde">>
+%% test tries to match following strings, composing letters one by one:
+%% <<"a">> <<"ab">> <<"abc">> <<"abcd">> <<"abcde">>
+%% ShouldMatchList should contain those and only those variants, that should match,
+%% for example [<<"ab">>, <<"abc">>] for RegExBin <<"abc*">>
+check_all_variants(RegExBin, BinStrToRecompose, ShouldMatchList) ->
+	Automata = re_compiler:compile(RegExBin),
+	TransitionAutomata = convert_automata(Automata),
+	AllMatchedList = check_all_variants_acc1(TransitionAutomata, BinStrToRecompose),
+	Set1 = gb_sets:from_list(AllMatchedList),
+	Set2 = gb_sets:from_list(ShouldMatchList),
+	true = gb_sets:is_subset(Set1, Set2),
+	true = gb_sets:is_subset(Set2, Set2),
+	ok.
+
+check_all_variants_acc1(_, <<>>) ->
+	[];
+check_all_variants_acc1(TransitionAutomata, <<Letter:1/binary, Rest/binary>>) ->
+	LetterTransition = find_transition(Letter, TransitionAutomata),
+	MatchedAcc = case matches(LetterTransition, TransitionAutomata) of 
+		true -> [Letter];
+		false -> []
+	end,
+	check_all_variants_acc2(TransitionAutomata, Rest, Letter, MatchedAcc, LetterTransition).
+
+check_all_variants_acc2(_, <<>>, _, MatchedAcc, _) ->
+	MatchedAcc;
+check_all_variants_acc2(TransitionAutomata, <<Letter:1/binary, Rest/binary>>, BinStrAcc, MatchedAcc, TransitionAcc) ->
+	Transition = find_transition(Letter, TransitionAutomata),
+	TransitionAcc1 = compose_transitions(TransitionAcc, Transition),
+	BinStrAcc1 = <<BinStrAcc/binary, Letter/binary>>,
+	MatchedAcc1 = case matches(TransitionAcc1, TransitionAutomata) of 
+		true -> [BinStrAcc1 | MatchedAcc];
+		false -> MatchedAcc
+	end,
+	check_all_variants_acc2(TransitionAutomata, Rest, BinStrAcc1, MatchedAcc1, TransitionAcc1).
+
+
+%% dict(First => dict(Second => Value))  
+%% to
+%% dict(Second => dict(First => Value))
+swap_first_and_second_key_test() ->
+	Second2Value1 = dict:from_list([
+		{sec1, [val1, val2]}, 
+		{sec2, [val3, val4]}, 
+		{sec3, [val5, val6]}]),
+	Second2Value2 = dict:from_list([
+		{sec2, [val7, val8]}, 
+		{sec3, [val9, val10]}, 
+		{sec4, [val11, val12]}]),
+	First2Second2Value = dict:from_list([
+		{"fir1", Second2Value1},
+		{"fir2", Second2Value2}]),
+	MergeValues = fun(_, List1, List2) -> List1 ++ List2 end,
+	Second2First2Value = swap_first_and_second_key(First2Second2Value, MergeValues),
+	test_for_key_and_list(sec1, [val1, val2], Second2First2Value, MergeValues),
+	test_for_key_and_list(sec2, [val3, val4, val7, val8], Second2First2Value, MergeValues),
+	test_for_key_and_list(sec3, [val5, val6, val9, val10], Second2First2Value, MergeValues),
+	test_for_key_and_list(sec4, [val11, val12], Second2First2Value, MergeValues).
+
+
+test_for_key_and_list(Key, List, Second2First2Value, MergeValues) ->
+	RightSet = gb_sets:from_list(List),
+	{ok, First2Value} = dict:find(Key, Second2First2Value),
+	%io:format("First2Value: ~p~n", [First2Value]),
+	FoundList = lists:foldl(
+		fun({K, V}, Acc) -> MergeValues(K, V, Acc) end,
+		[], 
+		dict:to_list(First2Value)),
+	FoundSet = gb_sets:from_list(FoundList),
+	%io:format("FoundSet: ~p~n", [gb_sets:to_list(FoundSet)]),
+	%io:format("RightSet: ~p~n", [gb_sets:to_list(RightSet)]),
+	true = gb_sets:is_subset(FoundSet, RightSet),
+	true = gb_sets:is_subset(RightSet, FoundSet),
 	ok.
 
 
+%%% DEBUGGING %%%
+% print_transition_automata({transition_automata, InitialStates, FinalStates, TransAutoDict}) ->
+% 	io:format("transition_automata:~n"),
+% 	io:format("InitialStates: ~p~n", gb_sets:to_list(InitialStates)),
+% 	io:format("FinalStates: ~p~n", gb_sets:to_list(FinalStates)),
+% 	io:format("TransAutoDict:~n"),
+% 	print_transition_dict(TransAutoDict).
 
 
--spec compose(transition(), transition()) -> transition().
-
-compose({String1, Dict1}, {String2, Dict2}) ->	
-	{<<String1/binary, String2/binary>>, compose_letter_dicts(Dict1, Dict2)}.
-
-
-compose_letter_dicts(LetterDict1, LetterDict2) ->
-	dict:map(
-		fun(_LeftState, LeftStatesSet) ->
-			get_states_for(LeftStatesSet, LetterDict2)
-		end,
-		LetterDict1).
-
-get_states_for(LeftStatesSet, LetterDict2) ->
-	gb_sets:fold(
-		fun(LeftSetState, ResultSetAcc) ->
-			case dict:find(LeftSetState, LetterDict2) of 
-				error ->
-					ResultSetAcc;
-				{ok, FoundSet} ->
-					gb_sets:union(ResultSetAcc, FoundSet)
-			end
-		end,
-		gb_sets:new(),
-		LeftStatesSet).
-
-
-% merge_letter_dicts(LetterDict1, LetterDict2) ->
-% 	dict:merge(
-% 		fun(_, StatesSet1, StatesSet2) ->
-% 			gb_sets:union(StatesSet1, StatesSet2)
+% print_transition_dict(TransAutoDict) ->
+% 	dict:map(
+% 		fun(Letter, LetterDict) ->
+% 			print_letter_dict(Letter, LetterDict)
 % 		end,
-% 		LetterDict1,
-% 		LetterDict2).
+% 		TransAutoDict).
 
-
-
--spec new(letter(), Automata::re_automata()) -> transition().
-
-new(Letter, TransitionDict) ->
-	case dict:find(Letter, TransitionDict) of
-		{ok, LetterDict} ->
-			{Letter, LetterDict};
-		error -> badarg
-	end.
-
-
-
--spec match(string(), transition(), re_automata()) -> boolean().
-
-match(String, {String, TransitionDict}, Automata) ->
-	has_initial_and_final_state({String, TransitionDict}, Automata);
-match(_, _, _) -> false. % even string doesn't match
-
-
-has_initial_and_final_state({_, TransitionDict}, Automata = {re_automata, InitialStateIndex, _}) ->
-	HasInitial = dict:is_key(InitialStateIndex, TransitionDict),
-	HasFinal = dict:fold(
-		fun(_, SetOfStates, LHasFinal) ->
-			LHasFinal1 = gb_sets:fold(
-				fun(RightState, LLHasFinal) ->
-					LLHasFinal1 = re_compiler:is_matched(RightState, Automata),
-					LLHasFinal or LLHasFinal1
-				end,
-				false,
-				SetOfStates),
-			LHasFinal or LHasFinal1
-		end,
-		false,
-		TransitionDict),
-	HasInitial and HasFinal.
-
-
-test() ->
-	ReStr = <<"ab|cd">>,
-	Str1 = <<"a">>,
-	Str2 = <<"b">>,
-	Str3 = <<"c">>,
-	Str4 = <<"d">>,
-	Str12 = <<Str1/binary, Str2/binary>>,
-	Str123 = <<Str12/binary, Str3/binary>>,
-	Str1234 = <<Str123/binary, Str4/binary>>,
-	Str34 = <<Str3/binary, Str4/binary>>,
-	Auto = re_compiler:compile(ReStr),
-	TrDict = compute_transition_dict(Auto),
-	T1 = new(Str1, TrDict),
-	T2 = new(Str2, TrDict),
-	T3 = new(Str3, TrDict),
-	T4 = new(Str4, TrDict),
-	T12 = compose(T1, T2),
-	T123 = compose(T12, T3),
-	T1234 = compose(T123, T4),
-	T34 = compose(T3, T4),
-	Res1 = has_initial_and_final_state(T1, Auto),
-	Res2 = has_initial_and_final_state(T2, Auto),
-	Res3 = has_initial_and_final_state(T3, Auto),
-	Res12 = has_initial_and_final_state(T12, Auto),
-	Res123 = has_initial_and_final_state(T123, Auto),
-	Res1234 = has_initial_and_final_state(T1234, Auto),
-	Res34 = has_initial_and_final_state(T34, Auto),
-	io:format("Str: ~s\tTrans: ~p\t Res: ~p~n", [Str1, T1, Res1]),
-	io:format("Str: ~s\tTrans: ~p\t Res: ~p~n", [Str2, T2, Res2]),
-	io:format("Str: ~s\tTrans: ~p\t Res: ~p~n", [Str3, T3, Res3]),
-	io:format("Str: ~s\tTrans: ~p\t Res: ~p~n", [Str12, T12, Res12]),
-	io:format("Str: ~s\tTrans: ~p\t Res: ~p~n", [Str123, T123, Res123]),
-	io:format("Str: ~s\tTrans: ~p\t Res: ~p~n", [Str1234, T1234, Res1234]),
-	io:format("Str: ~s\tTrans: ~p\t Res: ~p~n", [Str34, T34, Res34]).
-
-
-
-
+% print_letter_dict(Letter, LetterDict) ->
+% 	io:format("~p:~n", [Letter]),
+% 	dict:map(
+% 		fun(LeftState, RightStatesSet) ->
+% 			io:format("~p => ~p~n", [LeftState, gb_sets:to_list(RightStatesSet)])
+% 		end,
+% 		LetterDict),
+% 	ok.
 
 
