@@ -1,4 +1,4 @@
--module(rope).
+-module(gen_rope).
 -export([leaf_rope/2, get_cache/1, split/3, merge/3, flatten/2, length/1]).
 
 

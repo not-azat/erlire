@@ -1,7 +1,7 @@
 -module(rope_test).
 -export([test/0]).
 
--behaviour(rope).
+-behaviour(gen_rope).
 -export([length/1, cache/1, merge_values/2, split_value/2, merge_caches/2]).
 
 -type cache() :: cache.
@@ -46,10 +46,10 @@ merge_caches(cache, cache) -> cache.
 params() -> {?MODULE, 5}.
 
 
--spec binary2rope(binary()) -> rope:rope().
+-spec binary2rope(binary()) -> gen_rope:rope().
 
 binary2rope(Binary) ->
-	binary2rope(Binary, rope:leaf_rope(<<"">>, params())).
+	binary2rope(Binary, gen_rope:leaf_rope(<<"">>, params())).
 
 binary2rope(<<>>, AccRope) ->
 	AccRope;
@@ -57,12 +57,12 @@ binary2rope(Binary, AccRope) ->
 	{_, LeafLength} = params(),
 	case byte_size(Binary) =< LeafLength of 
 		true ->
-			NewRope = rope:leaf_rope(Binary, params()),
-			rope:merge(AccRope, NewRope, params());
+			NewRope = gen_rope:leaf_rope(Binary, params()),
+			gen_rope:merge(AccRope, NewRope, params());
 		false ->
 			<<LeftChunk:LeafLength/binary, RestBinary/binary>> = Binary,
-			NewRope = rope:leaf_rope(LeftChunk, params()),
-			binary2rope(RestBinary, rope:merge(AccRope, NewRope, params()))
+			NewRope = gen_rope:leaf_rope(LeftChunk, params()),
+			binary2rope(RestBinary, gen_rope:merge(AccRope, NewRope, params()))
 	end.
 
 
@@ -89,22 +89,22 @@ test_single_right_to_left(Binary) ->
 	lists:foreach(
 		fun(Pos) ->
 			Rope = binary2rope(Binary),
-			{Rope1, Rope2} = rope:split(Rope, Pos, params()),
-			Binary1 = case rope:flatten(Rope1, params()) of 
+			{Rope1, Rope2} = gen_rope:split(Rope, Pos, params()),
+			Binary1 = case gen_rope:flatten(Rope1, params()) of 
 				undefined -> <<>>;
 				Val1 -> Val1
 			end,
-			Binary2 = case rope:flatten(Rope2, params()) of 
+			Binary2 = case gen_rope:flatten(Rope2, params()) of 
 				undefined -> <<>>;
 				Val2 -> Val2
 			end,
-			Rope12 = rope:merge(Rope1, Rope2, params()),
-			Rope21 = rope:merge(Rope2, Rope1, params()),
-			Binary34 = case rope:flatten(Rope12, params()) of 
+			Rope12 = gen_rope:merge(Rope1, Rope2, params()),
+			Rope21 = gen_rope:merge(Rope2, Rope1, params()),
+			Binary34 = case gen_rope:flatten(Rope12, params()) of 
 				undefined -> <<>>;
 				Val34 -> Val34
 			end,
-			Binary43 = case rope:flatten(Rope21, params()) of 
+			Binary43 = case gen_rope:flatten(Rope21, params()) of 
 				undefined -> <<>>;
 				Val43 -> Val43
 			end,
@@ -125,14 +125,14 @@ test_single_merge_split(Binary) ->
 	lists:foreach(
 		fun(Pos) ->
 			Rope = binary2rope(Binary),
-			{Rope1, Rope2} = rope:split(Rope, Pos, params()),
-			Rope3 = rope:merge(Rope1, Rope2, params()),
-			Binary2 = rope:flatten(Rope3, params()),
+			{Rope1, Rope2} = gen_rope:split(Rope, Pos, params()),
+			Rope3 = gen_rope:merge(Rope1, Rope2, params()),
+			Binary2 = gen_rope:flatten(Rope3, params()),
 			Result = Binary == Binary2,
 			maybe_print(not Result, "fail with:~n" ++ to_list(Binary) ++ "~n on pos: " ++ to_list(Pos)),
-			Result2 = rope:length(Rope) == (rope:length(Rope1) + rope:length(Rope2)),
-			Result3 = rope:length(Rope3) == (rope:length(Rope1) + rope:length(Rope2)),
-			Result4 = byte_size(Binary) == rope:length(Rope3),
+			Result2 = gen_rope:length(Rope) == (gen_rope:length(Rope1) + gen_rope:length(Rope2)),
+			Result3 = gen_rope:length(Rope3) == (gen_rope:length(Rope1) + gen_rope:length(Rope2)),
+			Result4 = byte_size(Binary) == gen_rope:length(Rope3),
 			maybe_print(not (Result3 and Result2 and Result4), "fail length with:~n" ++ to_list(Binary) ++ "~n on pos: " ++ to_list(Pos))
 		end,
 		lists:seq(0, byte_size(Binary) + 1)).
@@ -152,7 +152,7 @@ test_conversion_equality() ->
 
 test_single_conversion(Binary) ->
 	Rope = binary2rope(Binary),
-	Binary2 = rope:flatten(Rope, params()),
+	Binary2 = gen_rope:flatten(Rope, params()),
 	Binary2 == Binary.
 
 
