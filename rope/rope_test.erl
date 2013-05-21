@@ -2,7 +2,7 @@
 -export([test/0]).
 
 -behaviour(gen_rope).
--export([length/1, cache/1, merge_values/2, split_value/2, merge_caches/2]).
+-export([length/2, cache/2, merge_values/3, split_value/3, merge_caches/3]).
 
 -type cache() :: cache.
 -type value() :: binary().
@@ -10,40 +10,40 @@
 
 %%% rope callbacks %%%
 
--spec length(value()) -> number().
+-spec length(value(), term()) -> number().
 
-length(BinString) -> byte_size(BinString).
+length(BinString, _) -> byte_size(BinString).
 
 
--spec cache(value()) -> cache().
+-spec cache(value(), term()) -> cache().
 
-cache(_) -> cache.
+cache(_, _) -> cache.
 
 
 % length(Value1) + length(Value2) = length(merge_values(Value1, Value2))
--spec merge_values(value(), value()) -> value().
+-spec merge_values(value(), value(), term()) -> value().
 
-merge_values(BinString1, BinString2) ->
+merge_values(BinString1, BinString2, _) ->
 	<<BinString1/binary, BinString2/binary>>.
 
 
 % if {Value1, Value2} = split_value(Value) 
 % then length(Value1) + length(Value2) = length(Value)
--spec split_value(value(), number()) -> {value(), value()}.
+-spec split_value(value(), number(), term()) -> {value(), value()}.
 
-split_value(BinString, Len) ->
+split_value(BinString, Len, _) ->
 	<<BinString1:Len/binary, BinString2/binary>> = BinString,
 	{BinString1, BinString2}.
 
 
--spec merge_caches(cache(), cache()) -> cache().
+-spec merge_caches(cache(), cache(), term()) -> cache().
 % dummy cache
-merge_caches(cache, cache) -> cache.
+merge_caches(cache, cache, _) -> cache.
 
 
 %%% Test %%%%
 
-params() -> {?MODULE, 5}.
+params() -> {?MODULE, 5, give_back}.
 
 
 -spec binary2rope(binary()) -> gen_rope:rope().
@@ -54,7 +54,7 @@ binary2rope(Binary) ->
 binary2rope(<<>>, AccRope) ->
 	AccRope;
 binary2rope(Binary, AccRope) ->
-	{_, LeafLength} = params(),
+	{_, LeafLength, _} = params(),
 	case byte_size(Binary) =< LeafLength of 
 		true ->
 			NewRope = gen_rope:leaf_rope(Binary, params()),
