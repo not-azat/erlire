@@ -3,7 +3,7 @@
 -include("re_types.hrl").
 
 
--spec run(binary(), re_automata()) -> boolean().
+-spec run(binary(), re_compiler:re_automata()) -> boolean().
 
 run(BinString, Automata) ->
 	matches(BinString, Automata, re_compiler:initial_states_set(Automata)).

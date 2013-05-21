@@ -1,9 +1,9 @@
 -type regex_post() :: string().
 -type operator() :: char(). % currently
 -type letter() :: char(). % currently
--type exp_index() :: integer() | null.
--type state() :: matched | {split, Out1::exp_index(), Out2::exp_index()}  | {letter, letter(), Out::exp_index()}.
--type re_automata1() :: {re_automata1, exp_index(), dict()}.
+
+
+
 -type proto_exp() :: {proto_exp, IsFinal::boolean(), dict()}.
--type re_automata() :: {re_automata, exp_index(), dict()}. % differs from re_automata1() in value type
+ % differs from re_automata1() in value type
 -type transition() :: {string(), dict()}. % dict of exp_index() => set(exp_index()) - transition function

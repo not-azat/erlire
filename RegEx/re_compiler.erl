@@ -3,41 +3,28 @@
 -export([print_final_automata/1]).
 -include("re_types.hrl").
 
-%%% public interface
 
--spec compile(regex_post()) -> re_automata() | badarg.
+-type re_automata() :: {re_automata, exp_index(), dict()}.
+-type re_automata1() :: {re_automata1, exp_index(), dict()}.
+-type state() :: matched | {split, Out1::exp_index(), Out2::exp_index()}  | {letter, letter(), Out::exp_index()}.
+-type exp_index() :: integer() | null.
 
-compile(RegExStrBin) ->
-	RegExStr = binary_to_list(RegExStrBin),
-	PostfixRegExStr = re_infix_to_postfix:convert(RegExStr),
-	case (PostfixRegExStr) of 
-		badarg -> badarg;
-		_ ->
-			convert_to_binary(compact(process_token(PostfixRegExStr, [], dict:new())))
+% public
+-spec compile(binary()) -> re_automata() | {error, Reason::term()};
+			 (string()) -> re_automata() | {error, Reason::term()}.
+
+compile(RegExStr) when is_binary(RegExStr) ->
+	compile(binary_to_list(RegExStr));
+compile(RegExStr) ->
+	try
+		PostfixRegEx = re_infix_to_postfix:convert(RegExStr),
+		AutomataWithEps = process_token(PostfixRegEx, [], dict:new()),
+		compact(AutomataWithEps)
+	catch
+		Exception:Reason -> {error, {Exception, Reason}}
 	end.
-
-%%% interface for re_transition
-
-% -spec compute_transition(letter(), re_automata()) -> transition().
-
-% compute_transition(Letter, {re_automata, InitialExpNum, AutomataDict}) ->
-% 	dict:fold(
-% 		fun(StateIndex, {IsFinal, EdgesDict}, ResultAcc) ->
-% 			add_states_for_letter(Letter, EdgesDict, ResultAcc)
-% 		end,
-% 		dict:new(),
-% 		AutomataDict).
-
-% add_states_for_letter(Letter, EdgesDict, Acc) ->
-% 	dict:fold(
-% 		fun
-% 			(Letter, SetOfIndices, LAcc) ->
-% 				gb_sets:union(SetOfIndices, LAcc);
-% 			(_, _, LAcc) -> 
-% 				LAcc
-% 		end,
-% 		Acc,
-% 		EdgesDict).
+	
+	
 
 
 %%% interface for re_processor
@@ -56,11 +43,16 @@ next_states_set(Token, CurrentState, {re_automata, _InitialExpNum, AutomataDict}
 		error ->
 			{error, invalid_state_index};
 		{ok, {_, EdgesDict}} ->
-			case (dict:find(Token, EdgesDict)) of 
-				{ok, Set} -> Set;
-				error -> gb_sets:new()
-			end 
+			gb_sets:union(
+				merge_sets_for_token(Token, EdgesDict),
+				merge_sets_for_token(any, EdgesDict))
 	end.
+
+merge_sets_for_token(Token, EdgesDict) ->
+	case (dict:find(Token, EdgesDict)) of 
+		{ok, Set} -> Set;
+		error -> gb_sets:new()
+	end.	
 
 
 -spec is_matched(exp_index(), re_automata()) -> true | false | {error, invalid_state_index}.
@@ -75,7 +67,7 @@ is_matched(CurrentState, {re_automata, _InitialExpNum, AutomataDict}) ->
 
 %%% Compilation to NFA with empty edges
 
--spec process_token(list(letter()), list(exp_index()), dict()) -> re_automata1().
+-spec process_token(re_infix_to_postfix:postfix_regex(), list(exp_index()), dict()) -> re_automata1().
 
 process_token([], [], _) ->
 	{re_automata1, 0, dict:new()};
@@ -96,34 +88,34 @@ process_token([Token | RestTokens], ArgStack, Expressions) ->
 
 -spec process_operator(operator(), list(letter()), list(exp_index()), dict()) -> re_automata1().
 
-process_operator($., RestTokens, [ExpNum1, ExpNum2 | RestStack], Expressions) ->
+process_operator(concat, RestTokens, [ExpNum1, ExpNum2 | RestStack], Expressions) ->
 	process_token(
 		RestTokens,
 		[ExpNum2 | RestStack],
 		cat_expressions(ExpNum2, ExpNum1, Expressions));
 
-process_operator($|, RestTokens, [ExpNum1, ExpNum2 | RestStack], Expressions) ->
+process_operator('|', RestTokens, [ExpNum1, ExpNum2 | RestStack], Expressions) ->
 	{NewExpNum, NewExpressions} = create_split_expression(ExpNum1, ExpNum2, Expressions),
 	process_token(
 		RestTokens,
 		[NewExpNum | RestStack],
 		NewExpressions);
 
-process_operator($?, RestTokens, [ExpNum | RestStack], Expressions) ->
+process_operator('?', RestTokens, [ExpNum | RestStack], Expressions) ->
 	{NewExpNum, NewExpressions} = create_split_expression(ExpNum, null, Expressions),
 	process_token(
 		RestTokens,
 		[NewExpNum | RestStack],
 		NewExpressions);
 
-process_operator($*, RestTokens, [ExpNum | RestStack], Expressions) ->
+process_operator('*', RestTokens, [ExpNum | RestStack], Expressions) ->
 	{NewExpNum, NewExpressions} = create_split_expression(ExpNum, null, Expressions),
 	process_token(
 		RestTokens,
 		[NewExpNum | RestStack],
 		cat_expressions(ExpNum, NewExpNum, NewExpressions));
 
-process_operator($+, RestTokens, [ExpNum | RestStack], Expressions) ->
+process_operator('+', RestTokens, [ExpNum | RestStack], Expressions) ->
 	{NewExpNum, NewExpressions} = create_split_expression(ExpNum, null, Expressions),
 	process_token(
 		RestTokens,
@@ -257,17 +249,17 @@ compact(Automata, Index, State) ->
 		DestinationsDict).
 
 
-convert_to_binary({re_automata, InitialExpNum, AutomataDict}) ->
-	AutomataDict1 = dict:map(fun(_, {IsFinal, EdgesDict}) ->
-			NewEdgesDict = dict:fold(fun(Letter, SetOfStatesIndeces, NewDict) ->
-					dict:store(<<Letter>>, SetOfStatesIndeces, NewDict)
-				end,
-				dict:new(),
-				EdgesDict),
-			{IsFinal, NewEdgesDict}
-		end,
-		AutomataDict),
-	{re_automata, InitialExpNum, AutomataDict1}.
+% convert_to_binary({re_automata, InitialExpNum, AutomataDict}) ->
+% 	AutomataDict1 = dict:map(fun(_, {IsFinal, EdgesDict}) ->
+% 			NewEdgesDict = dict:fold(fun(Letter, SetOfStatesIndeces, NewDict) ->
+% 					dict:store(<<Letter>>, SetOfStatesIndeces, NewDict)
+% 				end,
+% 				dict:new(),
+% 				EdgesDict),
+% 			{IsFinal, NewEdgesDict}
+% 		end,
+% 		AutomataDict),
+% 	{re_automata, InitialExpNum, AutomataDict1}.
 
 
 -spec remove_redundant_states(dict()) -> dict(). % difference in value types
