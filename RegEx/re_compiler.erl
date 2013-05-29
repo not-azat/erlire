@@ -1,5 +1,5 @@
 -module(re_compiler).
--export([compile/1, initial_states_set/1, next_states_set/3, is_matched/2]).
+-export([compile/1, compile_r/1, initial_states_set/1, next_states_set/3, is_matched/2]).
 -export([print_final_automata/1]).
 -include("re_types.hrl").
 
@@ -13,17 +13,18 @@
 -spec compile(binary()) -> re_automata() | {error, Reason::term()};
 			 (string()) -> re_automata() | {error, Reason::term()}.
 
-compile(RegExStr) when is_binary(RegExStr) ->
-	compile(binary_to_list(RegExStr));
 compile(RegExStr) ->
-	try
-		PostfixRegEx = re_infix_to_postfix:convert(RegExStr),
-		AutomataWithEps = process_token(PostfixRegEx, [], dict:new()),
-		compact(AutomataWithEps)
-	catch
-		Exception:Reason -> {error, {Exception, Reason}}
-	end.
+	compile(RegExStr, false).
 	
+
+% public
+-spec compile_r(binary()) -> {re_automata(), re_automata()}
+						   | {error, Reason::term()};
+			   (string()) -> {re_automata(), re_automata()}
+			   			   | {error, Reason::term()}.
+
+compile_r(RegExStr) ->
+	compile_both(RegExStr).
 	
 
 
@@ -67,60 +68,106 @@ is_matched(CurrentState, {re_automata, _InitialExpNum, AutomataDict}) ->
 
 %%% Compilation to NFA with empty edges
 
--spec process_token(re_infix_to_postfix:postfix_regex(), list(exp_index()), dict()) -> re_automata1().
 
-process_token([], [], _) ->
+-spec compile_both(binary()) -> {re_automata(), re_automata()}
+										 | {error, Reason::term()};
+			 	  (string()) -> {re_automata(), re_automata()}
+			 					    	 | {error, Reason::term()}.
+
+compile_both(RegExStr) when is_binary(RegExStr) ->
+	compile_both(binary_to_list(RegExStr));
+compile_both(RegExStr) ->
+	try
+		PostfixRegEx = re_infix_to_postfix:convert(RegExStr),
+		AutomataWithEps = process_token(PostfixRegEx, [], dict:new(), false),
+		AutomataWithEpsR = process_token(PostfixRegEx, [], dict:new(), true),
+		{compact(AutomataWithEps), compact(AutomataWithEpsR)}
+	catch
+		Exception:Reason -> {error, {Exception, Reason}}
+	end.
+
+
+-spec compile(binary(), boolean()) -> re_automata() | {error, Reason::term()};
+			 (string(), boolean()) -> re_automata() | {error, Reason::term()}.
+
+compile(RegExStr, Reverse) when is_binary(RegExStr) ->
+	compile(binary_to_list(RegExStr), Reverse);
+compile(RegExStr, Reverse) ->
+	try
+		PostfixRegEx = re_infix_to_postfix:convert(RegExStr),
+		AutomataWithEps = process_token(PostfixRegEx, [], dict:new(), Reverse),
+		compact(AutomataWithEps)
+	catch
+		Exception:Reason -> {error, {Exception, Reason}}
+	end.
+
+
+-spec process_token(re_infix_to_postfix:postfix_regex(), list(exp_index()), dict(), boolean()) -> re_automata1().
+
+process_token([], [], _, _) ->
 	{re_automata1, 0, dict:new()};
 
-process_token([], [ExpressionNum], Expressions) ->
+process_token([], [ExpressionNum], Expressions, _) ->
 	enclose_to_matched(ExpressionNum, Expressions);
 
-process_token([Token | RestTokens], ArgStack, Expressions) ->
+process_token([Token | RestTokens], ArgStack, Expressions, Reverse) ->
 	case (re_lang:is_operator(Token)) of 
 		false ->
 			{ExpNum, NewExpressions} = create_letter_expression(Token, Expressions),
-			process_token(RestTokens, [ExpNum | ArgStack], NewExpressions);
+			process_token(RestTokens, [ExpNum | ArgStack], NewExpressions, Reverse);
 		true ->
-			process_operator(Token, RestTokens, ArgStack, Expressions)
+			process_operator(Token, RestTokens, ArgStack, Expressions, Reverse)
 	end.
 
 
 
--spec process_operator(operator(), list(letter()), list(exp_index()), dict()) -> re_automata1().
+-spec process_operator(operator(), list(letter()), list(exp_index()), dict(), boolean()) -> re_automata1().
 
-process_operator(concat, RestTokens, [ExpNum1, ExpNum2 | RestStack], Expressions) ->
+process_operator(concat, RestTokens, [ExpNum1, ExpNum2 | RestStack], Expressions, false) ->
 	process_token(
 		RestTokens,
 		[ExpNum2 | RestStack],
-		cat_expressions(ExpNum2, ExpNum1, Expressions));
+		cat_expressions(ExpNum2, ExpNum1, Expressions),
+		false);
 
-process_operator('|', RestTokens, [ExpNum1, ExpNum2 | RestStack], Expressions) ->
+process_operator(concat, RestTokens, [ExpNum1, ExpNum2 | RestStack], Expressions, true) ->
+	process_token(
+		RestTokens,
+		[ExpNum1 | RestStack],
+		cat_expressions(ExpNum1, ExpNum2, Expressions),
+		true);
+
+process_operator('|', RestTokens, [ExpNum1, ExpNum2 | RestStack], Expressions, Reverse) ->
 	{NewExpNum, NewExpressions} = create_split_expression(ExpNum1, ExpNum2, Expressions),
 	process_token(
 		RestTokens,
 		[NewExpNum | RestStack],
-		NewExpressions);
+		NewExpressions,
+		Reverse);
 
-process_operator('?', RestTokens, [ExpNum | RestStack], Expressions) ->
+process_operator('?', RestTokens, [ExpNum | RestStack], Expressions, Reverse) ->
 	{NewExpNum, NewExpressions} = create_split_expression(ExpNum, null, Expressions),
 	process_token(
 		RestTokens,
 		[NewExpNum | RestStack],
-		NewExpressions);
+		NewExpressions,
+		Reverse);
 
-process_operator('*', RestTokens, [ExpNum | RestStack], Expressions) ->
+process_operator('*', RestTokens, [ExpNum | RestStack], Expressions, Reverse) ->
 	{NewExpNum, NewExpressions} = create_split_expression(ExpNum, null, Expressions),
 	process_token(
 		RestTokens,
 		[NewExpNum | RestStack],
-		cat_expressions(ExpNum, NewExpNum, NewExpressions));
+		cat_expressions(ExpNum, NewExpNum, NewExpressions),
+		Reverse);
 
-process_operator('+', RestTokens, [ExpNum | RestStack], Expressions) ->
+process_operator('+', RestTokens, [ExpNum | RestStack], Expressions, Reverse) ->
 	{NewExpNum, NewExpressions} = create_split_expression(ExpNum, null, Expressions),
 	process_token(
 		RestTokens,
 		[ExpNum | RestStack],
-		cat_expressions(ExpNum, NewExpNum, NewExpressions)).
+		cat_expressions(ExpNum, NewExpNum, NewExpressions),
+		Reverse).
 
 
 

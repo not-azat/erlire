@@ -90,7 +90,7 @@ parse_token([Token | Rest], OpStack, ResultQueue) ->
 parse_operator(Op, RegExRest, [], ResultQueue) ->
 	parse_token(RegExRest, [Op], ResultQueue);
 parse_operator(Op, RegExRest, OpStack, ResultQueue) ->
-	{NewOpStack, NewResultQueue} = (push_operator(Op, pop_operators(Op, OpStack, ResultQueue))),
+	{NewOpStack, NewResultQueue} = push_operator(Op, pop_operators(Op, OpStack, ResultQueue)),
 	parse_token(RegExRest, NewOpStack, NewResultQueue).
 
 
