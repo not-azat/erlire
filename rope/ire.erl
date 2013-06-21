@@ -1,5 +1,5 @@
 -module(ire).
--export([new/3, merge/2, split/2, matches/1, length/1]).
+-export([new/3, merge/2, split/2, matches/1, length/1, get_transition/1]).
 
 -behaviour(gen_rope).
 -export([length/2, cache/2, merge_values/3, split_value/3, merge_caches/3]).
@@ -46,8 +46,20 @@ split({ire, Rope, TransAutomata, LeafLength}, Pos) ->
 -spec matches(ire()) -> boolean().
 
 matches({ire, Rope, _, _}) ->
-	{Matches, _} = gen_rope:get_cache(Rope),
-	Matches.
+	case (gen_rope:get_cache(Rope)) of 
+		{Matches, _} -> Matches;
+		undefined -> false
+	end.
+
+
+% public
+-spec get_transition(ire()) -> re_transition:transition() | undefined.
+
+get_transition({ire, Rope, _, _}) ->
+	case (gen_rope:get_cache(Rope)) of 
+		{_, Transition} -> Transition;
+		undefined -> undefined
+	end.
 
 
 % public
@@ -96,7 +108,7 @@ length(BinString, _) ->
 -spec cache(binary(), term()) -> {boolean(), re_transition:transition()}.
 
 cache(BinString, TransAutomata) ->
-	io:format("ire: cache~n"),
+	% io:format("ire: cache~n"),
 	Transition = re_transition:find_transition(BinString, TransAutomata),
 	{re_transition:matches(Transition, TransAutomata), Transition}.
 
@@ -123,7 +135,7 @@ split_value(BinString, Pos, _) ->
 		term()) -> {boolean(), re_transition:transition()}.
 
 merge_caches({Matches1, Transition1}, {Matches2, Transition2}, TransAutomata) ->
-	io:format("ire: merge_caches~n"),
+	% io:format("ire: merge_caches~n"),
 	Transition = re_transition:compose_transitions(Transition1, Transition2),
 	Matches = re_transition:matches(Transition, TransAutomata),
 	{Matches or Matches1 or Matches2, Transition}.

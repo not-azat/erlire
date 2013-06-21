@@ -1,5 +1,6 @@
 
 *.beam
+*.txt
 
 RegEx/.DS_Store
 
