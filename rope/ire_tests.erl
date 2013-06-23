@@ -36,7 +36,7 @@ all_pairs_as_re_test_() ->
 		eq(<<"aadd">>, <<"a+b">>),
 		eq(<<"aasb">>, <<"a+b">>),
 		eq(<<"a">>, <<"ab+">>),
-		eq(<<"">>, <<"ab+">>),
+		%eq(<<"">>, <<"ab+">>),
 		eq(<<"ab">>, <<"ab+">>),
 		eq(<<"bb">>, <<"ab+">>),
 		eq(<<"abb">>, <<"ab+">>),
@@ -48,7 +48,7 @@ all_pairs_as_re_test_() ->
 		eq(<<"aadd">>, <<"a*b">>),
 		eq(<<"aasb">>, <<"a*sb">>),
 		eq(<<"a">>, <<"ab*">>),
-		eq(<<"">>, <<"ab*">>),
+		%eq(<<"">>, <<"ab*">>),
 		eq(<<"ab">>, <<"ab*">>),
 		eq(<<"bb">>, <<"ab*">>),
 		eq(<<"abb">>, <<"ab*">>),
@@ -81,9 +81,10 @@ all_pairs_as_re_test_() ->
 	].
 
 eq(BinStr, BinRegExStr) ->
-	?_assertEqual(
-				re_matches(BinStr, BinRegExStr), 
-				matches(BinStr, BinRegExStr)).
+	{<<BinStr/binary," ",BinRegExStr/binary>>,
+		?_assertEqual(
+				re_matches(BinStr, <<"^",BinRegExStr/binary,"$">>), 
+				matches(BinStr, BinRegExStr))}.
 
 matches(BinString, BinRegExStr) ->
 	Automata = re_compiler:compile(BinRegExStr),

@@ -4,8 +4,9 @@
 
 files() ->
 	[
-		{"test_data/bench_2.txt", "test_data/bench_2_re.txt"},
-		{"test_data/bench_3.txt", "test_data/bench_3_re.txt"}
+		{"test_data/bench_1.txt", "test_data/bench_1_re.txt"}
+		%{"test_data/bench_2.txt", "test_data/bench_2_re.txt"},
+		%{"test_data/bench_3.txt", "test_data/bench_3_re.txt"}
 	].
 
 run() ->
@@ -44,7 +45,7 @@ serial_ire(FileName, Binary, AutomataStr) ->
 	T1 = erlang:now(),
 	Automata = re_compiler:compile(AutomataStr),
 	TransitionAutomata = re_transition:convert_automata(Automata),
-	Ire = ire:new(Binary, TransitionAutomata, 65),
+	Ire = ire:new(Binary, TransitionAutomata, 5),
 	Result = ire:matches(Ire),
 	T2 = erlang:now(),
 	T = timer:now_diff(T2, T1),

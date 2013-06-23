@@ -136,6 +136,6 @@ split_value(BinString, Pos, _) ->
 
 merge_caches({Matches1, Transition1}, {Matches2, Transition2}, TransAutomata) ->
 	% io:format("ire: merge_caches~n"),
-	Transition = re_transition:compose_transitions(Transition1, Transition2),
+	Transition = re_transition:compose(Transition1, Transition2),
 	Matches = re_transition:matches(Transition, TransAutomata),
 	{Matches or Matches1 or Matches2, Transition}.

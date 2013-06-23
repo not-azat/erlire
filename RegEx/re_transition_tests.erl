@@ -1,5 +1,5 @@
 -module(re_transition_tests).
--import(re_transition, [convert_automata/1, find_transition/2, compose_transitions/2, matches/2]).
+-import(re_transition, [convert_automata/1, find_transition/2, compose/2, matches/2]).
 -include_lib("eunit/include/eunit.hrl").
 
 
@@ -35,7 +35,12 @@ check_all_variants(RegExBin, BinStrToRecompose, ShouldMatchList) ->
 	AllMatchedList = check_all_variants_acc1(TransitionAutomata, BinStrToRecompose),
 	Set1 = gb_sets:from_list(AllMatchedList),
 	Set2 = gb_sets:from_list(ShouldMatchList),
-	[?_assert(gb_sets:is_subset(Set1, Set2)), ?_assert(gb_sets:is_subset(Set2, Set1))].
+	CommentList = << <<M/binary, ", ">> || M <- AllMatchedList >>,
+	Comment = <<RegExBin/binary, " ", BinStrToRecompose/binary, "[", CommentList/binary, "]">>,
+	[
+		{Comment, ?_assert(gb_sets:is_subset(Set1, Set2))}, 
+		{Comment, ?_assert(gb_sets:is_subset(Set2, Set1))}
+	].
 
 check_all_variants_acc1(_, <<>>) ->
 	[];
@@ -51,7 +56,7 @@ check_all_variants_acc2(_, <<>>, _, MatchedAcc, _) ->
 	MatchedAcc;
 check_all_variants_acc2(TransitionAutomata, <<Letter:1/binary, Rest/binary>>, BinStrAcc, MatchedAcc, TransitionAcc) ->
 	Transition = find_transition(Letter, TransitionAutomata),
-	TransitionAcc1 = compose_transitions(TransitionAcc, Transition),
+	TransitionAcc1 = compose(TransitionAcc, Transition),
 	BinStrAcc1 = <<BinStrAcc/binary, Letter/binary>>,
 	MatchedAcc1 = case matches(TransitionAcc1, TransitionAutomata) of 
 		true -> [BinStrAcc1 | MatchedAcc];

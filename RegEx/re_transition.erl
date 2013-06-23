@@ -1,154 +1,198 @@
 -module(re_transition).
--export([convert_automata/1, find_transition/2, compose_transitions/2, matches/2]).
+-export([convert_automata/1, find_transition/2, compose/2, matches/2]).
+-export([example/0]).
 
-
--type transition_automata() :: {transition_automata, InitialStates :: gb_set(), FinalStates :: gb_set(), dict()}.
-%% where dict(Letter => dict(Index => set(Index)))
 
 -type re_automata() :: {re_automata, InitialExpNum::integer(), dict()}.
 %% where dict(Index => {IsFinal::boolean(), dict(Letter => set(Index))})
 
--type transition() :: dict().
-%% where dict(Index => set(Index))
+-type transition_automata() :: {transition_automata, N::number(), InitialStates::bitstring(), FinalStates::bitstring(), dict()}.
+%% where dict(Letter => transition())
 
+-type transition() :: {From::bitstring(), To::[bitstring()]}.
+%% bitstrings of equal size. e.g., 
+%% From = 10001000 and To = [01100000, 00100001] 
+%% means that:
+%% from node 0 there are links to nodes 1 and 2,
+%% from node 4 there are links to nodes 2 and 7.
+
+
+%%% Converting %%%
 
 %% public
 -spec convert_automata(re_automata()) -> transition_automata().
 
 convert_automata({re_automata, InitialExpNum, AutomataDict}) ->
+	% dict(Index => {IsFinal::boolean(), dict(Letter => set(Index))})
 	AutomataDictNoIsFinal = dict:map(
 		fun(_, {_, Value}) -> Value end,
-		AutomataDict),
-	TransAutoDict = swap_first_and_second_key(
-		AutomataDictNoIsFinal,
-		fun(_, Set1, Set2) ->
-			gb_sets:union(Set1, Set2)
-		end),
-	InitialStates = gb_sets:singleton(InitialExpNum),
-	FinalStates = dict:fold(
+		AutomataDict), 
+	% dict(Index => dict(Letter => set(Index)))
+	LetterToIndexToSet = utils:swap_first_and_second_key(AutomataDictNoIsFinal),
+	N = 1 + find_largest_index(LetterToIndexToSet), % TODO slooow, maybe add N to re_automata()
+	% dict(Letter => dict(Index => set(Index)))
+	TransitionDict = dict:map(
+		fun(_, IndexToSet) ->
+			compact_transition(IndexToSet, N)
+		end,
+		LetterToIndexToSet),
+	% dict(Letter => transition())
+	InitialStates = bit:bitmask([InitialExpNum], N),
+	FinalStatesList = lists:sort(dict:fold(
 		fun
-			(Index, {true, _}, AccSet) -> gb_sets:add(Index, AccSet);
-			(_, {false, _}, AccSet) -> AccSet
-		end,
-		gb_sets:new(),
-		AutomataDict),
-	{transition_automata, InitialStates, FinalStates, TransAutoDict}.
-
-
--spec swap_first_and_second_key(
-		dict(), 
-		MergeValues::fun((term(), term(), term()) -> term())) -> dict().
-%% dict(First => dict(Second => Value))  
-%% to
-%% dict(Second => didict:dict()ct(First => Value))
-swap_first_and_second_key(First2Second2Value, MergeValues) ->
-	dict:fold(
-		fun(First, Second2Value, Second2First2ValueAcc) ->
-			SwappedPairsList = make_all_swapped_pairs(First, Second2Value), % [{Second, dict(First => Value)}]
-			add_all_swapped_pairs(SwappedPairsList, Second2First2ValueAcc, MergeValues)
-		end,
-		dict:new(),
-		First2Second2Value).
-
-
--spec make_all_swapped_pairs(
-		First::term(), 
-		Second2Value :: dict()) -> list({Second::term(), First2Value :: dict()}).
-
-make_all_swapped_pairs(First, Second2Value) ->
-	dict:fold(
-		fun(Second, Value, AccList) ->
-			First2Value = dict:store(First, Value, dict:new()),
-			[{Second, First2Value} | AccList]
+			(Index, {true, _}, AccList) -> [Index | AccList];
+			(_, _, AccList) -> AccList
 		end,
 		[],
-		Second2Value).
+		AutomataDict)),
+	FinalStates = bit:bitmask(FinalStatesList, N),
+	R = {transition_automata, N, InitialStates, FinalStates, TransitionDict},
+	%print_transition_automata(R),
+	R.
 
 
--spec add_all_swapped_pairs(
-		list({Key :: term(), Value :: dict()}), 
-		Acc :: dict(), 
-		fun((term(), term(), term()) -> term())) -> dict().
-
-add_all_swapped_pairs(KVList, AccDict, MergeValues) ->
-	lists:foldl(
-		fun({Key, Value1}, InnerAccDict) ->
-			case dict:find(Key, InnerAccDict) of 
-				{ok, Value2} ->
-					dict:store(Key, dict:merge(MergeValues, Value1, Value2), InnerAccDict);
-				error ->
-					dict:store(Key, Value1, InnerAccDict)
-			end
+find_largest_index(LetterToIndexToSet) ->
+	L1 = dict:to_list(LetterToIndexToSet),
+	L2 = lists:map(
+		fun({_, IndexToSet}) -> dict:to_list(IndexToSet) end,
+		L1),
+	L3 = lists:flatten(L2),
+	L4 = lists:map(
+		fun({Index, Set}) ->
+			[Index] ++ gb_sets:to_list(Set)
 		end,
-		AccDict,
-		KVList).
+		L3),
+	L5 = lists:flatten(L4),
+	lists:foldl(
+		fun(X, Acc) ->
+			if (X > Acc) -> X; true -> Acc end
+		end,
+		0,
+		L5).
 
+
+compact_transition(IndexToSet, Largest) ->
+	Indeces = lists:sort(dict:fetch_keys(IndexToSet)),
+	Vs = lists:map(
+		fun(Index) ->
+			{ok, Set} = dict:find(Index, IndexToSet),
+			Dests = lists:sort(gb_sets:to_list(Set)),
+			bit:bitmask(Dests, Largest)
+		end,
+		Indeces),
+	K = bit:bitmask(Indeces, Largest),
+	{K, Vs}.
+
+
+%%% Finding transition %%%
 
 %% public
 -spec find_transition(binary(), transition_automata()) -> transition().
 
-find_transition(<<>>, _) ->
-	dict:new();
-find_transition(<<Letter:1/binary, Rest/binary>>, {transition_automata, _, _, TransAutoDict}) ->
-	case dict:find(Letter, TransAutoDict) of 
-		{ok, Value} -> 
-			find_transition_acc(Rest, TransAutoDict, Value);
-		error -> 
-			dict:new()
+find_transition(<<>>, {transition_automata, N, _, _, _}) ->
+	Full = bit:bitmask(one, N),
+	List = [ Full || _ <- lists:seq(1, N) ],
+	{Full, List};
+find_transition(<<Letter:1/binary, Rest/binary>>, {transition_automata, N, _, _, TransitionDict} = TAutomata) ->
+	Transition = case (dict:find(Letter, TransitionDict)) of 
+		{ok, Trans} -> Trans;
+		error -> {bit:bitmask(zero, N), []}
+	end,
+	case (Rest) of 
+		<<>> -> Transition;
+		_ -> compose(Transition, find_transition(Rest, TAutomata))
 	end.
 
 
--spec find_transition_acc(
-		binary(), 
-		TransAutoDict :: dict(), 
-		Transition :: dict()) -> Transition :: dict().
-
-find_transition_acc(<<>>, _, AccDict) ->
-	AccDict;
-find_transition_acc(<<Letter:1/binary, Rest/binary>>, TransAutoDict, AccDict) ->
-	AccDict1 = case dict:find(Letter, TransAutoDict) of 
-		{ok, Value} -> compose_transitions(AccDict, Value);
-		error -> dict:new()
-	end,
-	find_transition_acc(Rest, TransAutoDict, AccDict1).
-
+%%% Composing %%%
 
 %% public
--spec compose_transitions(transition(), transition()) -> transition().
+-spec compose(transition(), transition()) -> transition().
 
-compose_transitions(Transition1, Transition2) ->
-	dict:fold(
-		fun(Left, MiddleLeftSet, AccDict) ->
-			gb_sets:fold(
-				fun(MiddleLeft, InnerAccDict) ->
-					case dict:find(MiddleLeft, Transition2) of 
-						{ok, RightSet} -> dict:store(Left, RightSet, InnerAccDict);
-						error -> InnerAccDict
-					end
-				end,
-				AccDict,
-				MiddleLeftSet)
-		end,
-		dict:new(),
-		Transition1).
+compose({K1, Vs1}, {K2, Vs2}) ->
+	ToOrs = [ bit:bitand(V1, K2) || V1 <- Vs1 ],
+	Composed = [ compose_masks(ToOr, K2, Vs2) || ToOr <- ToOrs ],
+	filter_mask(K1, Composed).
 
+
+-spec compose_masks(bitstring(), bitstring(), [bitstring()]) -> bitstring().
+
+compose_masks(ToOr, K2, Vs2) ->
+	compose_masks(ToOr, K2, Vs2, bit:bitmask(zero, bit_size(ToOr))).
+
+compose_masks(<<>>, <<>>, [], Acc) ->
+	Acc;
+compose_masks(<<1:1, ToOrRest/bitstring>>, <<1:1, K2Rest/bitstring>>, [V2 | Vs2], Acc) ->
+	compose_masks(ToOrRest, K2Rest, Vs2, bit:bitor(V2, Acc));
+compose_masks(<<0:1, ToOrRest/bitstring>>, <<1:1, K2Rest/bitstring>>, [_ | Vs2], Acc) ->
+	compose_masks(ToOrRest, K2Rest, Vs2, Acc);
+compose_masks(<<0:1, ToOrRest/bitstring>>, <<0:1, K2Rest/bitstring>>, Vs2, Acc) ->
+	compose_masks(ToOrRest, K2Rest, Vs2, Acc).
+
+
+-spec filter_mask(bitstring(), [bitstring()]) -> {bitstring(), [bitstring()]}.
+
+filter_mask(K1, Composed) ->
+	Empty = bit:bitmask(zero, bit_size(K1)),
+	NewK = build_mask(K1, Composed, Empty, <<>>), 
+	NewVs = [ Mask || Mask <- Composed, Mask /= Empty ],
+	{NewK, NewVs}.
+
+build_mask(<<>>, [], _, Acc) ->
+	Acc;
+build_mask(<<0:1, K1Rest/bitstring>>, L, Empty, Acc) ->
+	build_mask(K1Rest, L, Empty, <<Acc/bitstring, 0:1>>);
+build_mask(<<1:1, K1Rest/bitstring>>, [Empty | Rest], Empty, Acc) ->
+	build_mask(K1Rest, Rest, Empty, <<Acc/bitstring, 0:1>>);
+build_mask(<<1:1, K1Rest/bitstring>>, [_ | Rest], Empty, Acc) ->
+	build_mask(K1Rest, Rest, Empty, <<Acc/bitstring, 1:1>>).
+
+
+%%% Matching %%%
 
 %% public
 -spec matches(transition(), transition_automata()) -> boolean().
 
-matches(Transition, {transition_automata, InitialStates, FinalStates, _}) ->
-	dict:fold(
-		fun(Index, IndexSet, IsFound) ->
-			HasInitial = gb_sets:is_element(Index, InitialStates),
-			HasFinal = (gb_sets:size(gb_sets:intersection(IndexSet, FinalStates)) > 0),
-			HasInitial and HasFinal or IsFound
+matches({K, Vs}, {transition_automata, N, InitialStates, FinalStates, _}) ->
+	Empty = bit:bitmask(zero, N),
+	HasInitial = bit:bitand(K, InitialStates) /= Empty,
+	Finals = [ 0 || V <- Vs, bit:bitand(V, FinalStates) /= Empty ],
+	HasInitial and (length(Finals) /= 0).
+
+
+% %%% DEBUGGING %%%
+example() ->
+	Automata = re_compiler:compile(<<"a?b?c?d?">>),
+	re_compiler:print_final_automata(Automata),
+	TransitionAutomata = convert_automata(Automata),
+	find_transition(<<"a">>, TransitionAutomata),
+	ok.
+
+print_transition({K, Vs}) ->
+	io:format("transition: from ~p to:~n", [bitstring2binary(K)]),
+	[ io:format("~p~n", [bitstring2binary(V)]) || V <- Vs ],
+	io:format("-----------~n"),
+	ok.
+
+print_transition_automata({transition_automata, N, InitialStates, FinalStates, TransitionDict}) ->
+	io:format("transition_automata:~nN: ~p~ninitial states: ~p~nfinal states: ~p~n",
+		[N, bitstring2binary(InitialStates), bitstring2binary(FinalStates)]),
+	dict:map(
+		fun(Letter, Transition) ->
+			io:format("~p => ~n", [Letter]),
+			print_transition(Transition)
 		end,
-		false,
-		Transition).
+		TransitionDict),
+	ok.
+
+bitstring2binary(<<>>) ->
+	<<>>;
+bitstring2binary(<<X:1, Rest/bitstring>>) ->
+	<<0:7, X:1, (bitstring2binary(Rest))/bitstring>>.
 
 
-%%% DEBUGGING %%%
-% print_transition_automata({transition_automata, InitialStates, FinalStates, TransAutoDict}) ->
+
+% print_transition_automata({transition_automata, Automata, InitialStates, FinalStates, TransAutoDict}) ->
 % 	io:format("transition_automata:~n"),
 % 	io:format("InitialStates: ~p~n", gb_sets:to_list(InitialStates)),
 % 	io:format("FinalStates: ~p~n", gb_sets:to_list(FinalStates)),

@@ -1,5 +1,5 @@
 -module(re_processor).
--export([run/2]).
+-export([run/2, move_states/3]).
 -include("re_types.hrl").
 
 

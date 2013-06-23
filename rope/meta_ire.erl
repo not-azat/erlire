@@ -92,7 +92,6 @@ spawn_leaf_servers(Binary, TransAutomata, LeafLength, AccPidList) when byte_size
 	Leaf = {leaf_server:start(Binary, TransAutomata, ?LEAF_LEN), byte_size(Binary)},
 	[Leaf | AccPidList];
 spawn_leaf_servers(Binary, TransAutomata, LeafLength, AccPidList) ->
-	%io:format("spawn_leaf_servers: ~n~p~n", [Binary]),
 	<<LeafBin:LeafLength/binary, RestBin/binary>> = Binary,
 	Leaf = {leaf_server:start(LeafBin, TransAutomata, ?LEAF_LEN), byte_size(LeafBin)},
 	spawn_leaf_servers(
@@ -170,6 +169,6 @@ split_value({Pid, Len}, N, TransAutomata) ->
 
 merge_caches({Matches1, Transition1}, {Matches2, Transition2}, TransAutomata) ->
 	% io:format("ire: merge_caches~n"),
-	Transition = re_transition:compose_transitions(Transition1, Transition2),
+	Transition = re_transition:compose(Transition1, Transition2),
 	Matches = re_transition:matches(Transition, TransAutomata),
 	{Matches or Matches1 or Matches2, Transition}.
