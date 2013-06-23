@@ -23,18 +23,20 @@ bitmask([_ | Rest], N, Acc) ->
 
 -spec bitand(bitstring(), bitstring()) -> bitstring().
 
-bitand(<<>>, <<>>) ->
-	<<>>;
-bitand(<<X1:1, R1/bitstring>>, <<X2:1, R2/bitstring>>) ->
-	<<(X1 band X2):1, (bitand(R1, R2))/bitstring>>.
+bitand(Bin1, Bin2) ->
+	N = bit_size(Bin1),
+	<<X1:N>> = Bin1,
+	<<X2:N>> = Bin2,
+	<<(X1 band X2):N>>. 
 
 
 -spec bitor(bitstring(), bitstring()) -> bitstring().
 
-bitor(<<>>, <<>>) ->
-	<<>>;
-bitor(<<X1:1, R1/bitstring>>, <<X2:1, R2/bitstring>>) ->
-	<<(X1 bor X2):1, (bitor(R1, R2))/bitstring>>.
+bitor(Bin1, Bin2) ->
+	N = bit_size(Bin1),
+	<<X1:N>> = Bin1,
+	<<X2:N>> = Bin2,
+	<<(X1 bor X2):N>>. 
 
 
 -spec bitnot(bitstring()) -> bitstring().

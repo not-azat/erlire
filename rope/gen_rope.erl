@@ -43,8 +43,11 @@
 -spec leaf_rope(value(), params()) -> rope().
 
 leaf_rope(Value, {Module, _, GiveBack}) ->
+	T1 = erlang:now(),
 	Len = Module:length(Value, GiveBack),
 	Cache = Module:cache(Value, GiveBack),
+	T2 = erlang:now(),
+	io:format("gen_rope:leaf_rope (~p) for ~p~n", [timer:now_diff(T2, T1), Value]),
 	{0, Len, {Value, Cache}}.
 
 

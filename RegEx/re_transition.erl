@@ -6,7 +6,7 @@
 -type re_automata() :: {re_automata, InitialExpNum::integer(), dict()}.
 %% where dict(Index => {IsFinal::boolean(), dict(Letter => set(Index))})
 
--type transition_automata() :: {transition_automata, N::number(), InitialStates::bitstring(), FinalStates::bitstring(), dict()}.
+-type transition_automata() :: {transition_automata, N::number(), InitialStates::bitstring(), FinalStates::bitstring(), list()}.
 %% where dict(Letter => transition())
 
 -type transition() :: {From::bitstring(), To::[bitstring()]}.
@@ -31,11 +31,11 @@ convert_automata({re_automata, InitialExpNum, AutomataDict}) ->
 	LetterToIndexToSet = utils:swap_first_and_second_key(AutomataDictNoIsFinal),
 	N = 1 + find_largest_index(LetterToIndexToSet), % TODO slooow, maybe add N to re_automata()
 	% dict(Letter => dict(Index => set(Index)))
-	TransitionDict = dict:map(
+	TransitionDict = dict:to_list(dict:map(
 		fun(_, IndexToSet) ->
 			compact_transition(IndexToSet, N)
 		end,
-		LetterToIndexToSet),
+		LetterToIndexToSet)),
 	% dict(Letter => transition())
 	InitialStates = bit:bitmask([InitialExpNum], N),
 	FinalStatesList = lists:sort(dict:fold(
@@ -89,20 +89,19 @@ compact_transition(IndexToSet, Largest) ->
 %% public
 -spec find_transition(binary(), transition_automata()) -> transition().
 
-find_transition(<<>>, {transition_automata, N, _, _, _}) ->
+find_transition(BinStr, {transition_automata, N, _, _, _} = TAutomata) ->
 	Full = bit:bitmask(one, N),
 	List = [ Full || _ <- lists:seq(1, N) ],
-	{Full, List};
-find_transition(<<Letter:1/binary, Rest/binary>>, {transition_automata, N, _, _, TransitionDict} = TAutomata) ->
-	Transition = case (dict:find(Letter, TransitionDict)) of 
-		{ok, Trans} -> Trans;
-		error -> {bit:bitmask(zero, N), []}
-	end,
-	case (Rest) of 
-		<<>> -> Transition;
-		_ -> compose(Transition, find_transition(Rest, TAutomata))
-	end.
+	find_transition(BinStr, TAutomata, {Full, List}).
 
+find_transition(<<>>, _, Acc) ->
+	Acc;
+find_transition(<<Letter:1/binary, Rest/binary>>, {transition_automata, N, _, _, TransitionDict} = TAutomata, Acc) ->
+	Transition = case (lists:keyfind(Letter, 1, TransitionDict)) of 
+		{Letter, Trans} -> Trans;
+		false -> {bit:bitmask(zero, N), []}
+	end,
+	find_transition(Rest, TAutomata, compose(Transition, Acc)).
 
 %%% Composing %%%
 
@@ -111,14 +110,12 @@ find_transition(<<Letter:1/binary, Rest/binary>>, {transition_automata, N, _, _,
 
 compose({K1, Vs1}, {K2, Vs2}) ->
 	ToOrs = [ bit:bitand(V1, K2) || V1 <- Vs1 ],
-	Composed = [ compose_masks(ToOr, K2, Vs2) || ToOr <- ToOrs ],
-	filter_mask(K1, Composed).
+	Empty = bit:bitmask(zero, bit_size(K1)),
+	Composed = [ compose_masks(ToOr, K2, Vs2, Empty) || ToOr <- ToOrs ],
+	filter_mask(K1, Composed, Empty).
 
 
--spec compose_masks(bitstring(), bitstring(), [bitstring()]) -> bitstring().
-
-compose_masks(ToOr, K2, Vs2) ->
-	compose_masks(ToOr, K2, Vs2, bit:bitmask(zero, bit_size(ToOr))).
+-spec compose_masks(bitstring(), bitstring(), [bitstring()], bitstring()) -> bitstring().
 
 compose_masks(<<>>, <<>>, [], Acc) ->
 	Acc;
@@ -130,10 +127,9 @@ compose_masks(<<0:1, ToOrRest/bitstring>>, <<0:1, K2Rest/bitstring>>, Vs2, Acc) 
 	compose_masks(ToOrRest, K2Rest, Vs2, Acc).
 
 
--spec filter_mask(bitstring(), [bitstring()]) -> {bitstring(), [bitstring()]}.
+-spec filter_mask(bitstring(), [bitstring()], bitstring()) -> {bitstring(), [bitstring()]}.
 
-filter_mask(K1, Composed) ->
-	Empty = bit:bitmask(zero, bit_size(K1)),
+filter_mask(K1, Composed, Empty) ->
 	NewK = build_mask(K1, Composed, Empty, <<>>), 
 	NewVs = [ Mask || Mask <- Composed, Mask /= Empty ],
 	{NewK, NewVs}.
@@ -177,8 +173,8 @@ print_transition({K, Vs}) ->
 print_transition_automata({transition_automata, N, InitialStates, FinalStates, TransitionDict}) ->
 	io:format("transition_automata:~nN: ~p~ninitial states: ~p~nfinal states: ~p~n",
 		[N, bitstring2binary(InitialStates), bitstring2binary(FinalStates)]),
-	dict:map(
-		fun(Letter, Transition) ->
+	lists:map(
+		fun({Letter, Transition}) ->
 			io:format("~p => ~n", [Letter]),
 			print_transition(Transition)
 		end,
