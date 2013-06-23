@@ -89,19 +89,20 @@ compact_transition(IndexToSet, Largest) ->
 %% public
 -spec find_transition(binary(), transition_automata()) -> transition().
 
-find_transition(BinStr, {transition_automata, N, _, _, _} = TAutomata) ->
-	Full = bit:bitmask(one, N),
-	List = [ Full || _ <- lists:seq(1, N) ],
-	find_transition(BinStr, TAutomata, {Full, List}).
-
-find_transition(<<>>, _, Acc) ->
-	Acc;
-find_transition(<<Letter:1/binary, Rest/binary>>, {transition_automata, N, _, _, TransitionDict} = TAutomata, Acc) ->
+find_transition(<<>>, {transition_automata, N, _, _, _}) ->
+ 	Full = bit:bitmask(one, N),
+ 	List = [ Full || _ <- lists:seq(1, N) ],
+	{Full, List};
+find_transition(<<Letter:1/binary, Rest/binary>>, {transition_automata, N, _, _, TransitionDict} = TAutomata) ->
 	Transition = case (lists:keyfind(Letter, 1, TransitionDict)) of 
 		{Letter, Trans} -> Trans;
 		false -> {bit:bitmask(zero, N), []}
 	end,
-	find_transition(Rest, TAutomata, compose(Transition, Acc)).
+	case (Rest) of 
+		<<>> -> Transition;
+		_ -> compose(Transition, find_transition(Rest, TAutomata))
+	end.
+
 
 %%% Composing %%%
 
@@ -158,10 +159,11 @@ matches({K, Vs}, {transition_automata, N, InitialStates, FinalStates, _}) ->
 
 % %%% DEBUGGING %%%
 example() ->
-	Automata = re_compiler:compile(<<"a?b?c?d?">>),
+	Automata = re_compiler:compile(<<"ab?cd">>),
 	re_compiler:print_final_automata(Automata),
 	TransitionAutomata = convert_automata(Automata),
-	find_transition(<<"a">>, TransitionAutomata),
+	io:format("Transition for <<a>>:~n"),
+	print_transition(find_transition(<<"a">>, TransitionAutomata)),
 	ok.
 
 print_transition({K, Vs}) ->
