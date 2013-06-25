@@ -43,11 +43,8 @@
 -spec leaf_rope(value(), params()) -> rope().
 
 leaf_rope(Value, {Module, _, GiveBack}) ->
-	% T1 = erlang:now(),
 	Len = Module:length(Value, GiveBack),
 	Cache = Module:cache(Value, GiveBack),
-	% T2 = erlang:now(),
-	% io:format("gen_rope:leaf_rope (~p) for ~p~n", [timer:now_diff(T2, T1), Value]),
 	{0, Len, {Value, Cache}}.
 
 
@@ -207,7 +204,7 @@ merge(Tree1 = {H1, _, _}, {H2, _, {_, _, Tree21, Tree22, Tree23, _}}, Params) wh
 		Params).
 
 
-% % public
+% public
 -spec flatten(rope(), params()) -> value() | undefined.
 
 flatten(empty_rope, _) ->

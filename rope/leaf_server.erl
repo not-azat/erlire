@@ -17,10 +17,10 @@ start(Ire, TransAutomata) ->
 	Pid.
 
 get_transition(Pid) -> 
-	gen_server:call(Pid, transition, 60000).
+	gen_server:call(Pid, transition, 120000).
 
 get_ire(Pid) ->
-	gen_server:call(Pid, ire, 60000).
+	gen_server:call(Pid, ire, 120000).
 
 dispose(Pid) ->
 	gen_server:cast(Pid, terminate).
@@ -59,7 +59,7 @@ code_change(_OldVsn, State, _Extra) ->
     %% No change planned.
     {ok, State}. 
 
-terminate(normal, State) ->
+terminate(_, State) ->
 	% io:format("terminate: ~n~p~n", [State]),
 	% % io:format("terminate. State: ~p~n", [State]),
 	ok.

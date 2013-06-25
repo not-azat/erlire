@@ -1,6 +1,6 @@
 -module(re_transition).
 -export([convert_automata/1, find_transition/2, compose/2, matches/2]).
--export([example/0]).
+-export([example/0, example2/0]).
 
 
 -type re_automata() :: {re_automata, InitialExpNum::integer(), dict()}.
@@ -46,9 +46,7 @@ convert_automata({re_automata, InitialExpNum, AutomataDict}) ->
 		[],
 		AutomataDict)),
 	FinalStates = bit:bitmask(FinalStatesList, N),
-	R = {transition_automata, N, InitialStates, FinalStates, TransitionDict},
-	%print_transition_automata(R),
-	R.
+	{transition_automata, N, InitialStates, FinalStates, TransitionDict}.
 
 
 find_largest_index(LetterToIndexToSet) ->
@@ -131,9 +129,10 @@ compose_masks(<<0:1, ToOrRest/bitstring>>, <<0:1, K2Rest/bitstring>>, Vs2, Acc) 
 -spec filter_mask(bitstring(), [bitstring()], bitstring()) -> {bitstring(), [bitstring()]}.
 
 filter_mask(K1, Composed, Empty) ->
-	NewK = build_mask(K1, Composed, Empty, <<>>), 
-	NewVs = [ Mask || Mask <- Composed, Mask /= Empty ],
-	{NewK, NewVs}.
+		NewK = build_mask(K1, Composed, Empty, <<>>), 
+		NewVs = [ Mask || Mask <- Composed, Mask /= Empty ],
+		{NewK, NewVs}.
+
 
 build_mask(<<>>, [], _, Acc) ->
 	Acc;
@@ -142,7 +141,9 @@ build_mask(<<0:1, K1Rest/bitstring>>, L, Empty, Acc) ->
 build_mask(<<1:1, K1Rest/bitstring>>, [Empty | Rest], Empty, Acc) ->
 	build_mask(K1Rest, Rest, Empty, <<Acc/bitstring, 0:1>>);
 build_mask(<<1:1, K1Rest/bitstring>>, [_ | Rest], Empty, Acc) ->
-	build_mask(K1Rest, Rest, Empty, <<Acc/bitstring, 1:1>>).
+	build_mask(K1Rest, Rest, Empty, <<Acc/bitstring, 1:1>>);
+build_mask(_, _, _, _) ->
+	throw('strange').
 
 
 %%% Matching %%%
@@ -157,7 +158,8 @@ matches({K, Vs}, {transition_automata, N, InitialStates, FinalStates, _}) ->
 	HasInitial and (length(Finals) /= 0).
 
 
-% %%% DEBUGGING %%%
+%%%%%% DEBUGGING %%%%%%
+
 example() ->
 	Automata = re_compiler:compile(<<"ab?cd">>),
 	re_compiler:print_final_automata(Automata),
@@ -165,6 +167,9 @@ example() ->
 	io:format("Transition for <<a>>:~n"),
 	print_transition(find_transition(<<"a">>, TransitionAutomata)),
 	ok.
+
+example2() ->
+	filter_mask(<<95,1:2>>, [<<0,1:2>>,<<0,1:2>>,<<0,1:2>>,<<0,1:2>>,<<0,1:2>>,<<0,1:2>>,<<0,1:2>>], <<0,0:2>>).
 
 print_transition({K, Vs}) ->
 	io:format("transition: from ~p to:~n", [bitstring2binary(K)]),
@@ -187,31 +192,5 @@ bitstring2binary(<<>>) ->
 	<<>>;
 bitstring2binary(<<X:1, Rest/bitstring>>) ->
 	<<0:7, X:1, (bitstring2binary(Rest))/bitstring>>.
-
-
-
-% print_transition_automata({transition_automata, Automata, InitialStates, FinalStates, TransAutoDict}) ->
-% 	io:format("transition_automata:~n"),
-% 	io:format("InitialStates: ~p~n", gb_sets:to_list(InitialStates)),
-% 	io:format("FinalStates: ~p~n", gb_sets:to_list(FinalStates)),
-% 	io:format("TransAutoDict:~n"),
-% 	print_transition_dict(TransAutoDict).
-
-
-% print_transition_dict(TransAutoDict) ->
-% 	dict:map(
-% 		fun(Letter, LetterDict) ->
-% 			print_letter_dict(Letter, LetterDict)
-% 		end,
-% 		TransAutoDict).
-
-% print_letter_dict(Letter, LetterDict) ->
-% 	io:format("~p:~n", [Letter]),
-% 	dict:map(
-% 		fun(LeftState, RightStatesSet) ->
-% 			io:format("~p => ~p~n", [LeftState, gb_sets:to_list(RightStatesSet)])
-% 		end,
-% 		LetterDict),
-% 	ok.
 
 

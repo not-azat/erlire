@@ -1,5 +1,5 @@
 -module(meta_ire).
--export([new/3, matches/1, length/1]).
+-export([new/3, matches/1, length/1, merge/2, split/2]).
 
 -behaviour(gen_rope).
 -export([length/2, cache/2, merge_values/3, split_value/3, merge_caches/3]).
@@ -24,25 +24,25 @@ new(BinString, TransAutomata, LeafLength) ->
 		LeafLength}.
 
 
-% % public
-% -spec merge(ire(), ire()) -> ire().
+% public
+-spec merge(meta_ire(), meta_ire()) -> meta_ire().
 
-% merge({ire, Rope1, TransAutomata, LeafLength}, {ire, Rope2, _, _}) ->
-% 	{ire,
-% 		gen_rope:merge(Rope1, Rope2, {?MODULE, LeafLength, TransAutomata}),
-% 		TransAutomata,
-% 		LeafLength}.
+merge({meta_ire, Rope1, TransAutomata, LeafLength}, {meta_ire, Rope2, _, _}) ->
+	{meta_ire,
+		gen_rope:merge(Rope1, Rope2, {?MODULE, LeafLength, TransAutomata}),
+		TransAutomata,
+		LeafLength}.
 
 
-% % public
-% -spec split(ire(), number()) -> {ire(), ire()}.
+% public
+-spec split(meta_ire(), number()) -> {meta_ire(), meta_ire()}.
 
-% split({ire, Rope, TransAutomata, LeafLength}, Pos) ->
-% 	{Rope1, Rope2} = gen_rope:split(Rope, Pos, {?MODULE, LeafLength, TransAutomata}),
-% 	{
-% 		{ire, Rope1, TransAutomata, LeafLength},
-% 		{ire, Rope2, TransAutomata, LeafLength}
-% 	}.
+split({meta_ire, Rope, TransAutomata, LeafLength}, Pos) ->
+	{Rope1, Rope2} = gen_rope:split(Rope, Pos, {?MODULE, LeafLength, TransAutomata}),
+	{
+		{meta_ire, Rope1, TransAutomata, LeafLength},
+		{meta_ire, Rope2, TransAutomata, LeafLength}
+	}.
 
 
 % public
@@ -53,16 +53,6 @@ matches({meta_ire, Rope, _, _}) ->
 		{Matches, _} -> Matches;
 		undefined -> false
 	end.
-
-
-% % public
-% -spec get_transition(ire()) -> re_transition:transition() | undefined.
-
-% get_transition({ire, Rope, _, _}) ->
-% 	case (gen_rope:get_cache(Rope)) of 
-% 		{_, Transition} -> Transition;
-% 		undefined -> undefined
-% 	end.
 
 
 % public
@@ -171,4 +161,4 @@ merge_caches({Matches1, Transition1}, {Matches2, Transition2}, TransAutomata) ->
 	% io:format("ire: merge_caches~n"),
 	Transition = re_transition:compose(Transition1, Transition2),
 	Matches = re_transition:matches(Transition, TransAutomata),
-	{Matches or Matches1 or Matches2, Transition}.
+	{Matches, Transition}.

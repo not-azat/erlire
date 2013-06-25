@@ -63,3 +63,6 @@ check_all_variants_acc2(TransitionAutomata, <<Letter:1/binary, Rest/binary>>, Bi
 		false -> MatchedAcc
 	end,
 	check_all_variants_acc2(TransitionAutomata, Rest, BinStrAcc1, MatchedAcc1, TransitionAcc1).
+
+
+
